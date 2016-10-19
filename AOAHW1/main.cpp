@@ -8,93 +8,113 @@
 
 #include <iostream>
 #include <cstdint>
+#include <ctime>
 
 #ifdef __i386
-#define FastUInt uint_fast32_t
+#define FastUInt uint_least32_t
+#define UInt uint32_t
 #else
-#define FastUInt uint_fast64_t
+#define FastUInt uint_least16_t
+#define UInt uint64_t
 #endif
+
+#define kSORTABLE_SIZE (unsigned short)10000000
+
+#define __likely(arg) __builtin_expect(arg, 1)
+#define __unlikely(arg) if(__builtin_expect(arg, 0))
 
 template <typename T>
 class Array {
-private:
+protected:
     T *data = nullptr;
-    uint64_t length;
-    T *external = nullptr;
+    UInt length;
     
-    void mergeRange(uint64_t start, uint64_t end) {
-        if (end == start + 1) return;
+public:
+    Array(UInt length) : data(new T[length]()), length(length) { }
+    
+    inline void insertAtIndex(const T &object, const UInt index) noexcept {
+        data[index] = object;
+    }
+    
+    inline T &objectAtIndex(const UInt index) const noexcept {
+        //  TODO: Static invocation opportunity
+        return data[index];
+    }
+    
+    inline T &operator [](const UInt index) const noexcept {
+        //  TODO: Flat call, static invocation opportunity
+        return objectAtIndex(index);
+    }
+};
+
+template <typename T>
+class MergeSortableArray : public Array<T> {
+    using Array<T>::data;
+    using Array<T>::length;
+    
+    T *cache = nullptr;
+    
+    inline void mergeRange(UInt start, UInt end) noexcept {
+        __unlikely (end == start + 1) return;
         
-        uint64_t i = 0;
-        uint64_t length = end - start;
-        uint64_t middle = length / 2;
+        UInt i = 0;
+        UInt length = end - start;
+        UInt middle = length / 2;
         
-        uint64_t leftIterator = start, rightIterator = start + middle;
+        UInt leftIterator = start, rightIterator = start + middle;
         
         mergeRange(start, start + middle);
         mergeRange(start + middle, end);
         
         for (i = 0; i < length; ++i) {
             if (leftIterator < start + middle && (rightIterator == end || data[leftIterator] > data[rightIterator])) {
-                external[i] = data[leftIterator++];
+                cache[i] = data[leftIterator++];
             } else {
-                external[i] = data[rightIterator++];
+                cache[i] = data[rightIterator++];
             }
         }
         
         for (i = start; i < end; ++i) {
-            data[i] = external[i - start];
+            data[i] = cache[i - start];
         }
     }
     
 public:
-    Array(uint64_t length) : data(new T[length]()), length(length) { }
+    MergeSortableArray(UInt length) : Array<T>(length), cache(nullptr) { }
     
-    inline void insertAtIndex(const T &object, const uint64_t index) noexcept {
-        data[index] = object;
-    }
-    
-    inline T &objectAtIndex(const uint64_t index) const noexcept {
-        //  TODO: Static invocation opportunity
-        return data[index];
-    }
-    
-    inline T &operator [](const uint64_t index) const noexcept {
-        //  TODO: Flat call, static invocation opportunity
-        return objectAtIndex(index);
-    }
-    
-    void mergeSort() {
-        external = new T[length]();
+    inline void mergeSort() noexcept {
+        cache = new T[length]();
         
         mergeRange(0, length);
         
-        delete[] external;
+        delete[] cache;
     }
 };
 
 int main(int argc, const char * argv[]) {
-    int i;
-    
     printf("List before sorting\n");
     
-    Array<FastUInt> array(5);
+    float timeTotal = 0.00f;
     
-    array.insertAtIndex(19, 0);
-    array.insertAtIndex(10, 1);
-    array.insertAtIndex(14, 2);
-    array.insertAtIndex(27, 3);
-    array.insertAtIndex(4, 4);
-    
-    for(i = 0; i < 5; i++) {
-        printf("%llu\n", array[i]);
+    for (int i = 0; i < 10; ++i) {
+        MergeSortableArray<FastUInt> array(kSORTABLE_SIZE);
+        
+        for (FastUInt i = 0; i < kSORTABLE_SIZE; ++i) {
+            array.insertAtIndex(arc4random_uniform(BUFSIZ * BUFSIZ), i);
+        }
+        
+        float startTime = (float)clock() / CLOCKS_PER_SEC; volatile float endTime;
+        
+        array.mergeSort();
+        
+        endTime = (float)clock() / CLOCKS_PER_SEC;
+        printf("%f\n", endTime - startTime);
+        
+        timeTotal += (endTime - startTime);
     }
     
-    array.mergeSort();
+    printf("Avg: %f\n", timeTotal / 10.00f);
     
-    printf("\nList after sorting\n");
-    
-    for(i = 0; i < 5; i++)
-        printf("%llu\n", array[i]);
+    return 0;
 }
 
