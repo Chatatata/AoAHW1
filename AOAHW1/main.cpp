@@ -12,7 +12,7 @@
 #ifdef __i386
 #define FastUInt uint_fast32_t
 #else
-#define FastUInt int
+#define FastUInt uint_fast64_t
 #endif
 
 template <typename T>
@@ -22,39 +22,31 @@ private:
     uint64_t length;
     T *external = nullptr;
     
-    void merge(const FastUInt lowerBound, const FastUInt medianValue, const FastUInt upperBound) {
-        FastUInt firstArrayIterator = lowerBound;
-        FastUInt secondArrayIterator = medianValue + 1;
-        FastUInt count;
+    void mergeRange(uint64_t start, uint64_t end) {
+        if (end == start + 1) return;
         
-        for (count = lowerBound; firstArrayIterator <= medianValue && secondArrayIterator <= upperBound; ++count) {
-            if (data[firstArrayIterator] <= data[secondArrayIterator]) {
-                external[count] = data[firstArrayIterator++];
+        uint64_t i = 0;
+        uint64_t length = end - start;
+        uint64_t middle = length / 2;
+        
+        uint64_t leftIterator = start, rightIterator = start + middle;
+        
+        mergeRange(start, start + middle);
+        mergeRange(start + middle, end);
+        
+        for (i = 0; i < length; ++i) {
+            if (leftIterator < start + middle && (rightIterator == end || data[leftIterator] > data[rightIterator])) {
+                external[i] = data[leftIterator++];
             } else {
-                external[count] = data[secondArrayIterator++];
+                external[i] = data[rightIterator++];
             }
         }
         
-        while (firstArrayIterator <= medianValue) {
-            external[count++] = data[firstArrayIterator++];
-        }
-        
-        while (secondArrayIterator <= upperBound) {
-            external[count++] = data[secondArrayIterator++];
+        for (i = start; i < end; ++i) {
+            data[i] = external[i - start];
         }
     }
     
-    void sort(FastUInt lowerBound, FastUInt upperBound) {
-        if (lowerBound < upperBound) {
-            FastUInt median = (lowerBound + upperBound) / 2;
-            
-            sort(lowerBound, median);
-            sort(median + 1, upperBound);
-            merge(lowerBound, median, upperBound);
-        } else {
-            return;
-        }
-    }
 public:
     Array(uint64_t length) : data(new T[length]()), length(length) { }
     
@@ -75,57 +67,11 @@ public:
     void mergeSort() {
         external = new T[length]();
         
-        sort(0, length);
+        mergeRange(0, length);
         
-        delete[] data;
-        
-        data = external;
+        delete[] external;
     }
 };
-
-//namespace Algorithm {
-//    namespace MergeSort {
-//        void merge(const FastUInt lowerBound, const FastUInt medianValue, const FastUInt upperBound) {
-//            FastUInt firstArrayIterator, secondArrayIterator, count;
-//            
-//            for (firstArrayIterator = lowerBound, secondArrayIterator = medianValue + 1, count = lowerBound; firstArrayIterator <= medianValue && secondArrayIterator <= upperBound; ++count) {
-//                if (a[firstArrayIterator] <= a[secondArrayIterator]) {
-//                    b[count] = a[firstArrayIterator];
-//                    
-//                    firstArrayIterator += 1;
-//                } else {
-//                    b[count] = a[secondArrayIterator];
-//                    
-//                    secondArrayIterator += 1;
-//                }
-//            }
-//            
-//            while (firstArrayIterator <= medianValue) {
-//                b[count++] = a[firstArrayIterator++];
-//            }
-//            
-//            while (secondArrayIterator <= upperBound) {
-//                b[count++] = a[secondArrayIterator++];
-//            }
-//            
-//            for (FastUInt i = lowerBound; i <= upperBound; ++i) {
-//                a[i] = b[i];
-//            }
-//        }
-//        
-//        void sort(FastUInt lowerBound, FastUInt upperBound) {
-//            if (lowerBound < upperBound) {
-//                FastUInt median = (lowerBound + upperBound) / 2l;
-//                
-//                sort(lowerBound, median);
-//                sort(median + 1, upperBound);
-//                merge(lowerBound, median, upperBound);
-//            } else {
-//                return;
-//            }
-//        }
-//    }
-//}
 
 int main(int argc, const char * argv[]) {
     int i;
@@ -141,7 +87,7 @@ int main(int argc, const char * argv[]) {
     array.insertAtIndex(4, 4);
     
     for(i = 0; i < 5; i++) {
-        printf("%u\n", array[i]);
+        printf("%llu\n", array[i]);
     }
     
     array.mergeSort();
@@ -149,5 +95,6 @@ int main(int argc, const char * argv[]) {
     printf("\nList after sorting\n");
     
     for(i = 0; i < 5; i++)
-        printf("%d\n", array[i]);
+        printf("%llu\n", array[i]);
 }
+
