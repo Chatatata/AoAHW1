@@ -11,14 +11,14 @@
 #include <ctime>
 
 #ifdef __i386
-#define FastUInt uint_least32_t
-#define UInt uint32_t
+#define FastUInt uint_least64_t
+#define UInt uint64_t
 #else
-#define FastUInt uint_least16_t
+#define FastUInt uint_least64_t
 #define UInt uint64_t
 #endif
 
-#define kSORTABLE_SIZE (unsigned short)10000000
+#define kSORTABLE_SIZE 100000000LL
 
 #define __likely(arg) __builtin_expect(arg, 1)
 #define __unlikely(arg) if(__builtin_expect(arg, 0))
@@ -92,11 +92,9 @@ public:
 };
 
 int main(int argc, const char * argv[]) {
-    printf("List before sorting\n");
-    
     float timeTotal = 0.00f;
     
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 1; ++i) {
         MergeSortableArray<FastUInt> array(kSORTABLE_SIZE);
         
         for (FastUInt i = 0; i < kSORTABLE_SIZE; ++i) {
@@ -108,12 +106,9 @@ int main(int argc, const char * argv[]) {
         array.mergeSort();
         
         endTime = (float)clock() / CLOCKS_PER_SEC;
-        printf("%f\n", endTime - startTime);
         
         timeTotal += (endTime - startTime);
     }
-    
-    printf("Avg: %f\n", timeTotal / 10.00f);
     
     return 0;
 }
