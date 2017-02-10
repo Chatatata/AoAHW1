@@ -11,17 +11,26 @@
 #include <ctime>
 #include <cassert>
 #include <cmath>
+#include <cstring>
+#include <functional>
+#include <algorithm>
+#include <chrono>
 
 #ifdef __i386
-#define FastUInt uint_least64_t
+#define FastUInt uint_fast64_t
 #define UInt uint64_t
 #else
-#define FastUInt uint_least64_t
+#define FastUInt uint_fast64_t
 #define UInt uint64_t
 #endif
 
 #define __likely(arg) if(__builtin_expect(arg, 1))
 #define __unlikely(arg) if(__builtin_expect(arg, 0))
+
+//  You may turn on assertion option in order to check outputs of the algorithms.
+#ifdef ASSERT_SORT_OUTPUT
+#undef ASSERT_SORT_OUTPUT
+#endif
 
 template <typename T>
 class Array {
@@ -32,11 +41,10 @@ protected:
 public:
     Array(UInt length) : data(new T[length]()), length(length) { }
     Array(const Array &object) : data(new T[object.length]()), length(object.length) {
-        memcpy(data, object.data, sizeof(T) * object.length);
-        
+        std::memcpy(data, object.data, sizeof(T) * object.length);
     }
     
-    ~Array() {
+    virtual ~Array() {
         delete [] data;
     }
     
@@ -65,7 +73,7 @@ public:
             }
         }
         
-        return 0;
+        throw "egzeption";
     }
 };
 
@@ -76,6 +84,7 @@ class MergeSortableArray : public Array<T> {
     
     T *cache = nullptr;
     
+    __attribute ((flatten hot))
     inline void mergeRange(UInt start, UInt end) noexcept {
         __unlikely (end == start + 1) return;
         
@@ -110,7 +119,7 @@ public:
         
         mergeRange(0, length);
         
-        delete[] cache;
+        delete [] cache;
     }
 };
 
@@ -180,7 +189,7 @@ class ActionDecoder {
 public:
     ActionDecoder() : actionIdentifiers(new std::string[64]()), lambdaExpressions(new std::function<void()>[64]()) { }
     
-    inline void registerAction(std::string identifier, std::function<void()> fn) {
+    inline void registerAction(std::string identifier, std::function<void()> fn) noexcept {
         //  Make it uppercase
         std::transform(identifier.begin(),
                        identifier.end(),
@@ -214,23 +223,34 @@ public:
 };
 
 int main(int argc, const char * argv[]) {
-    static const UInt sortableSize = atol(argv[1]);
-    static const UInt numberOfWarehouses = atol(argv[2]);
+    if (argc != 6) {
+        fprintf(stderr, "invalid number of arguments\n");
+        exit(11);
+    }
     
-    auto referenceLocation = WarehouseImmutableLocation(atol(argv[4]), atol(argv[5]));
+    static const UInt sortableSize = atoll(argv[1]);
+    static const UInt numberOfWarehouses = atoll(argv[2]);
+    
+    auto referenceLocation = WarehouseImmutableLocation(atoll(argv[4]), atoll(argv[5]));
     
     printf("Reading file from disk...\n");
-    FILE *file;
+    FILE *inputStream;
+    FILE *outputStream;
     
-    if(!(file = fopen("warehouselocations.txt", "r"))) {
+    if(!(inputStream = fopen("warehouselocations.txt", "r"))) {
         perror("could not read file");
+        exit(9);
+    }
+    
+    if (!(outputStream = fopen("output.txt", "w"))) {
+        perror("could not write to output file");
         exit(9);
     }
     
     Array<WarehouseImmutableLocation> locationsArray(sortableSize);
     
     for (UInt i = 0; i < sortableSize; ++i) {
-        fscanf(file, "%llu\t%llu\t%llu\n", &locationsArray[i].identifier, &locationsArray[i].longitude, &locationsArray[i].latitude);
+        fscanf(inputStream, "%llu\t%llu\t%llu\n", &locationsArray[i].identifier, &locationsArray[i].longitude, &locationsArray[i].latitude);
     }
     
     printf("Calculating distance squares array...\n");
@@ -243,73 +263,126 @@ int main(int argc, const char * argv[]) {
     
     ActionDecoder decoder;
     
-    decoder.registerAction("is", [&](){
-        volatile float timeElapsed;
-        volatile float startTime;
-        
+    decoder.registerAction("is", [&]() {
         printf("Starting benchmark suite: Insertion Sort, n = %llu\n", sortableSize);
         
         InsertionSortableArray<FastUInt> insertionSortableArray(distances);
         
-        startTime = (float)clock() / CLOCKS_PER_SEC;
+        auto startTime = std::chrono::high_resolution_clock::now();
         
         insertionSortableArray.sort();
         
-        timeElapsed = (float)clock() / CLOCKS_PER_SEC - startTime;
-        
+        auto endTime = std::chrono::high_resolution_clock::now();
+    
+#ifdef ASSERT_SORT_OUTPUT
         printf("Benchmarking completed, asserting results...\n");
         
         for (UInt i = 1; i < sortableSize; ++i) {
             assert(insertionSortableArray[i] >= insertionSortableArray[i - 1]);
         }
+#else
+        printf("Benchmarking completed.\n");
+#endif
         
-        printf("Insertion sort average: %f seconds\n", timeElapsed);
+        printf("Insertion sort average: %llu nanoseconds\n", std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count());
         
         printf("Nearest locations: \n");
         
         for (UInt i = 0; i < numberOfWarehouses; ++i) {
             WarehouseImmutableLocation wil = locationsArray[distances.findIndex(insertionSortableArray[i])];
             
-            printf("%llu.   \t{#%llu, (%llu, %llu), ∂ = %.2f}\n", i, wil.identifier, wil.longitude, wil.latitude, sqrt(insertionSortableArray[i]));
+            printf("%3llu.\t{#%6llu, (%4llu, %4llu)\t∂ = %3.2f}\n", i + 1, wil.identifier, wil.longitude, wil.latitude, sqrt(insertionSortableArray[i]));
+            fprintf(outputStream, "%llu\t%llu\t%llu\t%3.2f\n", wil.identifier, wil.longitude, wil.latitude, sqrt(insertionSortableArray[i]));
         }
         
         printf("\n");
     });
     
-    decoder.registerAction("ms", [&](){
-        volatile float timeElapsed;
-        volatile float startTime;
-        
+    decoder.registerAction("ms", [&]() {
         printf("Starting benchmark suite: Merge Sort, n = %llu\n", sortableSize);
         
         MergeSortableArray<FastUInt> mergeSortableArray(distances);
         
-        startTime = (float)clock() / CLOCKS_PER_SEC;
+        auto startTime = std::chrono::high_resolution_clock::now();
         
         mergeSortableArray.sort();
         
-        timeElapsed = (float)clock() / CLOCKS_PER_SEC - startTime;
-        
+        auto endTime = std::chrono::high_resolution_clock::now();
+    
+#ifdef ASSERT_SORT_OUTPUT
         printf("Benchmarking completed, asserting results...\n");
         
         for (UInt i = 1; i < mergeSortableArray.getLength(); ++i) {
             assert(mergeSortableArray[i] <= mergeSortableArray[i - 1]);
         }
+#else
+        printf("Benchmarking completed.\n");
+#endif
         
-        printf("Merge sort average: %f seconds\n", timeElapsed);
+        printf("Merge sort duration: %llu nanoseconds\n", std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count());
         
         printf("Nearest locations: \n");
         
         for (UInt i = 0; i < numberOfWarehouses; ++i) {
             WarehouseImmutableLocation wil = locationsArray[distances.findIndex(mergeSortableArray[mergeSortableArray.getLength() - (i + 1)])];
             
-            printf("%llu.   \t{#%llu, (%llu, %llu), ∂ = %.2f}\n", i, wil.identifier, wil.longitude, wil.latitude, sqrt(mergeSortableArray[mergeSortableArray.getLength() - (i + 1)]));
+            printf("%3llu.\t{#%6llu, (%4llu, %4llu)\t∂ = %3.2f}\n", i + 1, wil.identifier, wil.longitude, wil.latitude, sqrt(mergeSortableArray[mergeSortableArray.getLength() - (i + 1)]));
+            fprintf(outputStream, "%llu\t%llu\t%llu\t%3.2f\n", wil.identifier, wil.longitude, wil.latitude, sqrt(mergeSortableArray[mergeSortableArray.getLength() - (i + 1)]));
+        }
+        
+        printf("\n");
+    });
+    
+    decoder.registerAction("ls", [&]() {
+        printf("Starting benchmark suite: Unsorted Linear Search, n = %llu\n", sortableSize);
+        
+        Array<FastUInt> buffer(numberOfWarehouses);
+        UInt currentMaximumIndex = 0;
+        
+        auto startTime = std::chrono::high_resolution_clock::now();
+        
+        for (UInt i = 0; i < numberOfWarehouses; ++i) {
+            buffer[i] = distances[i];
+            
+            if (buffer[i] > buffer[currentMaximumIndex] || i == 0) {
+                currentMaximumIndex = i;
+            }
+        }
+        
+        for (UInt a = numberOfWarehouses; a < distances.getLength(); ++a) {
+            if (distances[a] < buffer[currentMaximumIndex]) {
+                buffer.insertAtIndex(distances[a], currentMaximumIndex);
+                
+                currentMaximumIndex = 0;
+                
+                for (UInt b = 0; b < numberOfWarehouses; ++b) {
+                    if (buffer[b] > buffer[currentMaximumIndex] || b == 0) {
+                        currentMaximumIndex = b;
+                    }
+                }
+            }
+        }
+        
+        auto endTime = std::chrono::high_resolution_clock::now();
+        
+        printf("Linear search duration: %lld nanoseconds\n", std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count());
+        
+        printf("Nearest locations (unsorted): \n");
+        
+        for (UInt i = 0; i < numberOfWarehouses; ++i) {
+            WarehouseImmutableLocation wil = locationsArray[distances.findIndex(buffer[i])];
+            
+            printf("%3llu.\t{#%6llu, (%4llu, %4llu)\t∂ = %3.2f}\n", i + 1, wil.identifier, wil.longitude, wil.latitude, sqrt(buffer[i]));
+            fprintf(outputStream, "%llu\t%llu\t%llu\t%3.2f\n", wil.identifier, wil.longitude, wil.latitude, sqrt(buffer[i]));
         }
         
         printf("\n");
     });
     
     decoder.invokeAction(argv[3]);
+    
+    fclose(inputStream);
+    fclose(outputStream);
     
     return 0;
 }
