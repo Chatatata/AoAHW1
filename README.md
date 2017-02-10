@@ -6,6 +6,7 @@ stack-based insertion sort.
 Merge sort could be run multi-threaded with discrete heap.
 Compile with optimizations.
 
+
 Pull requests will be gladly accepted, if you have suggestions.
 
 ## Run
